@@ -1,0 +1,6 @@
+
+pyflink
+pandas
+numpy
+apache-flink==1.17.1
+kafka-python

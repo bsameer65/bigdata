@@ -20,6 +20,8 @@ parts/
 sdist/
 var/
 wheels/
+radiation_data
+cleaned_chunks/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
