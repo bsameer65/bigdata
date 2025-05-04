@@ -72,18 +72,24 @@ def main():
 
 
     src_ddl = """
-    CREATE TABLE temp_table (
+   CREATE TABLE temp_table (
         `Captured Time` STRING,
         Latitude DOUBLE,
         Longitude DOUBLE,
+        `Value` DOUBLE,
+        Unit STRING,
+        MD5Sum STRING,
+        `Uploaded Time` STRING,
         proctime AS PROCTIME()
     ) WITH (
         'connector' = 'kafka',
         'topic' = 'weather',
         'properties.bootstrap.servers' = 'kafka:9092',
-        'properties.group.id' = 'weather',
+        'properties.group.id' = 'weather-consumer-group',
         'format' = 'json',
-        'scan.startup.mode' = 'earliest-offset'
+        'scan.startup.mode' = 'earliest-offset',
+        'json.fail-on-missing-field' = 'false',
+        'json.ignore-parse-errors' = 'true'
     )
 """
     # tbl_env.execute_sql(src_ddl)
@@ -105,18 +111,21 @@ def main():
     # tbl_env.execute_sql(sink_ddl)
     tbl_env.execute_sql(src_ddl)
     sink_ddl = """
-        CREATE TABLE sink_table (
-            captured_time STRING,
-            avg_latitude DOUBLE,
-            avg_longitude DOUBLE
-        ) WITH (
-            'connector' = 'kafka',
-            'topic' = 'processed_radiation_data',
-            'properties.bootstrap.servers' = 'kafka:9092',
-            'format' = 'json',
-            'scan.startup.mode' = 'latest-offset',
-            'json.ignore-parse-errors' = 'true'
-        )
+       CREATE TABLE sink_table (
+        `Captured Time` STRING,
+        avg_latitude DOUBLE,
+        avg_longitude DOUBLE,
+        avg_value DOUBLE,
+        unit STRING
+    ) WITH (
+        'connector' = 'kafka',
+        'topic' = 'processed_radiation_data',
+        'properties.bootstrap.servers' = 'kafka:9092',
+        'format' = 'json',
+        'scan.startup.mode' = 'latest-offset',
+        'json.fail-on-missing-field' = 'false',
+        'json.ignore-parse-errors' = 'true'
+    )
     """
     tbl_env.execute_sql(sink_ddl)
 
@@ -131,11 +140,14 @@ def main():
 
    
     sql = """
-        SELECT
-  `Captured Time`,
-  Latitude AS avg_latitude,
-  Longitude AS avg_longitude
-FROM temp_table
+         SELECT
+        `Captured Time`,
+        Latitude AS avg_latitude,
+        Longitude AS avg_longitude,
+        `Value` AS avg_value,
+        `Unit` AS unit
+    FROM temp_table
+
 
 
     """
