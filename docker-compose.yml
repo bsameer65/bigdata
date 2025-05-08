@@ -123,6 +123,17 @@ services:
 
 
 ## above working
+
+  # flink-python-job:
+  #   build:
+  #     context: .
+  #     dockerfile: src/components/flink/Dockerfile
+  #   volumes:
+  #     - .:/app  # Very important!
+  #   depends_on:
+  #     - kafka
+  #   environment:
+  #     - SOME_ENV=prod
   flink:
     build:
       context: ./src/components/flink

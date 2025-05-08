@@ -1,125 +1,92 @@
-
-import pandas as pd
-from kafka import KafkaProducer
-from json import dumps
-import threading
-import time
-from kafka.errors import NoBrokersAvailable
 import os
+import time
+import threading
+import pandas as pd
+from kafka import KafkaProducer as KProducer
+from kafka.errors import NoBrokersAvailable
+from json import dumps
+#from src.components import logger
 
-# Kafka settings
-kafka_nodes = os.getenv('KAFKA_SERVER', 'kafka:9092')  # Use environment variable for Kafka server address
-myTopic = "weather"
-chunk_size = 10000  # Size of each chunk to process
 
-def create_kafka_producer(producer_id, max_retries=10, delay=5):
-    """Try to connect to Kafka with retries."""
-    for attempt in range(max_retries):
+class KafkaProducerHandler:
+    def __init__(self):
+        self.kafka_conn_nodes = os.getenv('KAFKA_SERVER', 'kafka:9092')
+        self.topic = os.getenv('KAFKA_TOPIC', 'radiation_rawdata')
+        self.input_file = os.getenv('INPUT_FILE', '/data/measurements.csv')
+        self.chunk_size = int(os.getenv('CHUNK_SIZE', 1000000))
+        self.delay = int(os.getenv('RETRY_DELAY', 5))
+        self.total_producers = int(os.getenv('TOTAL_PRODUCERS', 5))
+        self.total_retry = int(os.getenv('TOTAL_RETRIES', 10))
+
+    def create_producer(self, producer_id):
+        """Create a Kafka producer instance with retries."""
+        for retry in range(self.total_retry):
+            try:
+                #logger.info(f"Producer {producer_id}: Attempting Kafka connection (try {retry+1})...")
+                producer = KProducer(
+                    bootstrap_servers=self.kafka_conn_nodes,
+                    value_serializer=lambda x: dumps(x).encode('utf-8'),
+                )
+                #logger.info(f"Producer {producer_id}: Connected successfully to Kafka.")
+                return producer
+            except NoBrokersAvailable as e:
+                #logger.warning(f"Producer {producer_id}: Kafka broker not available, retrying in {self.delay*(2**retry)} seconds... ({retry+1}/{self.total_retry})")
+                time.sleep(self.delay * (2 ** retry))  # exponential backoff
+        #logger.error(f"Producer {producer_id}: Failed to connect to Kafka after {self.total_retry} retries.")
+        raise Exception(f"Kafka connection failed for producer {producer_id}")
+
+    def send_data(self, producer, data, producer_id):
+        """Sending data to Kafka Topic."""
+        row_count = 0
+        for _, row in data.iterrows():
+            df_json = row.to_dict()
+            if row_count == 0:
+                print("Producer {producer_id}: Sending first row {df_json}")
+                #logger.info(f"Producer {producer_id}: Sending first row {df_json}")
+            producer.send(topic=self.topic, value=df_json)
+            row_count += 1
+        producer.flush()
+        #logger.info(f"Producer {producer_id}: Successfully sent {row_count} records.")
+        print(f"Producer {producer_id} sent {row_count} records.")
+
+    def pipeline(self, producer_id, data):
+        """Launching producer and sending data Pipeline."""
         try:
-            producer = KafkaProducer(
-                bootstrap_servers=kafka_nodes,
-                value_serializer=lambda x: dumps(x).encode('utf-8'),
-            )
-            print(f"✅ Kafka producer {producer_id} connected")
-            return producer
-        except NoBrokersAvailable:
-            print(f"❌ Kafka not available for producer {producer_id}, retrying in {delay} seconds... ({attempt+1}/{max_retries})")
-            time.sleep(delay)
-    raise Exception(f"Kafka not available after retries for producer {producer_id}")
+            producer = self.create_producer(producer_id)
+            self.send_data(producer, data, producer_id)
+            producer.close()
+        except Exception as e:
+            print("Producer {producer_id}: Failed during pipeline. Error: {e}")
+            #logger.exception(f"Producer {producer_id}: Failed during pipeline. Error: {e}")
 
+    def launch_producers(self, data_chunks):
+        """Creating multiple producer threads."""
+        threads = []
+        for i in range(self.total_producers):
+            thread = threading.Thread(target=self.pipeline, args=(i, data_chunks[i]))
+            threads.append(thread)
+            thread.start()
 
-def gen_data(producer, chunk, producer_id):
-    i = 0
-    for _, row in chunk.iterrows():
-        df_json = row.to_dict()
-        if i == 0:
-            print(f"Producer {producer_id} sending: {df_json}")
-        i += 1
-        producer.send(topic=myTopic, value=df_json)
-    producer.flush()
-    print(f"Producer {producer_id} sent {i} rows successfully")
+        for thread in threads:
+            thread.join()
 
+    def process_file(self):
+        """Main pipeline to process the CSV file and send to Kafka."""
+        columns = ['Captured Time', 'Latitude', 'Longitude', 'Value', 'Unit', 'MD5Sum', 'Uploaded Time']
+        try:
+            radiation_data = pd.read_csv(self.input_file, chunksize=self.chunk_size, usecols=columns)
+            for idx, chunk in enumerate(radiation_data):
+                print(f"Processing chunk {idx+1}...")
+                chunk = chunk.dropna(subset=['Captured Time']).sort_values('Captured Time')
+                chunk_division = [chunk.iloc[i::self.total_producers] for i in range(self.total_producers)]
+                self.launch_producers(chunk_division)
+                print(f"inished processing chunk {idx+1}")
+            print("All data sent to Kafka successfully!")
+        except Exception as e:
+            #logger.exception(f"Error processing file: {e}")
+            print(f"Error during processing: {e}")
 
-def start_producer(producer_id, data_chunk):
-    producer = create_kafka_producer(producer_id)
-    gen_data(producer, data_chunk, producer_id)
-    
 
 if __name__ == "__main__":
-    INPUT_FILE = '/data/measurements.csv'   
-    columns = ['Captured Time', 'Latitude', 'Longitude', 'Value', 'Unit', 'MD5Sum', 'Uploaded Time']
-    num_producers = 5  # Number of parallel threads
-    chunk_size = 1000000
-
-    data_iterator = pd.read_csv(INPUT_FILE, chunksize=chunk_size, usecols=columns)
-
-    for chunk_idx, chunk in enumerate(data_iterator):
-        print(f"Processing chunk {chunk_idx+1}...")
-
-        # Drop missing values in 'Captured Time'
-        chunk = chunk.dropna(subset=['Captured Time'])
-
-        # Sort the chunk
-        chunk = chunk.sort_values('Captured Time')
-
-        # Divide chunk into subchunks for multiple producers
-        subchunks = [chunk.iloc[i::num_producers] for i in range(num_producers)]
-
-        # Start multiple producer threads
-        producers = []
-        for i in range(num_producers):
-            producer_thread = threading.Thread(target=start_producer, args=(i, subchunks[i]))
-            producers.append(producer_thread)
-            producer_thread.start()
-
-        # Wait for all producers to finish
-        for producer_thread in producers:
-            producer_thread.join()
-
-        print(f"✅ Finished processing chunk {chunk_idx+1}")
-
-    print("🎉 All data sent to Kafka successfully!")
-
-
-
-#below code is working fine
-# if __name__ == "__main__":
-    
-    
-#     INPUT_FILE = r'D:\TU Hamburg\Semester 2\Big data\project\radiation_data\measurements.csv'   
-#     data_file_path = '/data/measurements.csv'    
-#     CHUNK_SIZE = 1000000               
-
-
-#     columns = ['Captured Time','Latitude','Longitude','Value','Unit','MD5Sum','Uploaded Time']
-
-    
-#     data = pd.read_csv(INPUT_FILE, chunksize=CHUNK_SIZE, usecols=columns)
-
-#     for i, chunk in enumerate(data):
-#         print(f"Processing chunk {i+1}...")
-
-#         # Drop rows with missing 'Captured Time'
-#         chunk = chunk.dropna(subset=['Captured Time'])
-
-#         # Sort inside chunk (small chunks are OK)
-#         chunk = chunk.sort_values('Captured Time')
-
-    
-
-#      # Path inside the container
-#     data = pd.read_csv(data_file_path,nrows=20)  # Read the CSV file data[['Captured Time', 'Latitude', 'Longitude', 'Value', 'Unit', 'MD5Sum', 'Uploaded Time']]
-#     data_copy = data[['Captured Time', 'Latitude', 'Longitude']].dropna()
-#     producers = []
-
-#     num_producers = 5  
-#     chunks = [data_copy.iloc[i::num_producers] for i in range(num_producers)]
-
-#     for i in range(num_producers):
-#         producer_thread = threading.Thread(target=start_producer, args=(i, chunks[i]))
-#         producers.append(producer_thread)
-#         producer_thread.start()
-
-#     for producer_thread in producers:
-#         producer_thread.join()
-
+    kafka_handler = KafkaProducerHandler()
+    kafka_handler.process_file()
