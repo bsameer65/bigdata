@@ -1,1 +1,0 @@
-from components.constants.constant import URL, root_dir, data_file

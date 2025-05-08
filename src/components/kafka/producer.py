@@ -46,9 +46,10 @@ def start_producer(producer_id, data_chunk):
     
 
 if __name__ == "__main__":
-    INPUT_FILE = '/data/measurements.csv'   
+    INPUT_FILE = '/data/measurements.csv'
     columns = ['Captured Time', 'Latitude', 'Longitude', 'Value', 'Unit', 'MD5Sum', 'Uploaded Time']
-    num_producers = 5  # Number of parallel threads
+    # num_producers = 5  # Number of parallel threads
+    num_producers = 1  # Number of parallel threads
     chunk_size = 1000000
 
     data_iterator = pd.read_csv(INPUT_FILE, chunksize=chunk_size, usecols=columns)
