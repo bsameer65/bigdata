@@ -36,7 +36,9 @@ def gen_data(producer, chunk, producer_id):
             print(f"Producer {producer_id} sending: {df_json}")
         i += 1
         producer.send(topic=myTopic, value=df_json)
-    producer.flush()
+        producer.flush()  # Ensure message is sent immediately
+        time.sleep(3)  # ⏱️ Delay between messages
+
     print(f"Producer {producer_id} sent {i} rows successfully")
 
 

@@ -14,6 +14,7 @@ services:
       bridge:
         aliases:
           - zookeeper
+    restart: unless-stopped
 
   kafka:
     image: confluentinc/cp-kafka
@@ -25,104 +26,28 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:32181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_LISTENER_NAME: INSIDE-KAFKA
+      # KAFKA_LISTENER_NAME: INSIDE-KAFKA
       #JMX_PORT: 9999
     networks:
       bridge:
         aliases:
           - kafka
+    restart: unless-stopped
 
-  kafka-producer-1:
-    image: kafka-producer-1
+  backend:
     build:
-      context: ./src/components/kafka
+      context: ./src/backend
+    container_name: fastapi-backend
+    environment:
+      - KAFKA_SERVER=kafka:9092
     depends_on:
       - kafka
-    environment:
-      PRODUCER_ID: 0
-      TOTAL_PRODUCERS: 5
-      KAFKA_SERVER: "kafka:9092"
-    volumes:
-      - D:/TU Hamburg/Semester 2/Big data/project/radiation_data:/data
+    ports:
+      - "8000:8000"
     networks:
       - bridge
+    restart: unless-stopped
 
-  kafka-producer-2:
-    image: kafka-producer-2
-    build:
-      context: ./src/components/kafka
-    depends_on:
-      - kafka
-    environment:
-      PRODUCER_ID: 1
-      TOTAL_PRODUCERS: 5
-      KAFKA_SERVER: "kafka:9092"
-    volumes:
-      - D:/TU Hamburg/Semester 2/Big data/project/radiation_data:/data
-    networks:
-      - bridge
-  kafka-producer-3:
-    image: kafka-producer-3
-    build:
-      context: ./src/components/kafka
-    depends_on:
-      - kafka
-    environment:
-      PRODUCER_ID: 2
-      TOTAL_PRODUCERS: 5
-      KAFKA_SERVER: "kafka:9092"
-    volumes:
-      - D:/TU Hamburg/Semester 2/Big data/project/radiation_data:/data
-    networks:
-      - bridge
-  kafka-producer-4:
-    image: kafka-producer-4
-    build:
-      context: ./src/components/kafka
-    depends_on:
-      - kafka
-    environment:
-      PRODUCER_ID: 3
-      TOTAL_PRODUCERS: 5
-      KAFKA_SERVER: "kafka:9092"
-    volumes:
-      - D:/TU Hamburg/Semester 2/Big data/project/radiation_data:/data
-    networks:
-      - bridge
-  kafka-producer-5:
-    image: kafka-producer-5
-    build:
-      context: ./src/components/kafka
-    depends_on:
-      - kafka
-    environment:
-      PRODUCER_ID: 4
-      TOTAL_PRODUCERS: 5
-      KAFKA_SERVER: "kafka:9092"
-    volumes:
-      - D:/TU Hamburg/Semester 2/Big data/project/radiation_data:/data
-    networks:
-      - bridge
-
-
-  # kafka-producer:
-
-  #   image: kafka-producer
-  #   build: 
-  #     context: ./src/components/kafka
-  #   depends_on:
-  #   - kafka
-  #   environment:
-  #     KAFKA_SERVER: "kafka:9092"
-  #     ZOOKEEPER_SERVER: "zookeeper:32181"
-  #     PRODUCER_INTERVAL: 100
-  #   volumes:
-  #     - D:/TU Hamburg/Semester 2/Big data/project/radiation_data:/data
-  #   networks:
-  #   - bridge
-
-
-## above working
   flink:
     build:
       context: ./src/components/flink
@@ -137,5 +62,85 @@ services:
       - kafka
     networks:
       - bridge
+    restart: unless-stopped
 
-  
+  # Producers
+  kafka-producer-1:
+    build:
+      context: ./src/components/kafka
+    container_name: kafka-producer-1
+    environment:
+      PRODUCER_ID: 0
+      TOTAL_PRODUCERS: 5
+      KAFKA_SERVER: "kafka:9092"
+    volumes:
+      - ./src/components/radiation_data:/data
+    depends_on:
+      - kafka
+    networks:
+      - bridge
+    restart: unless-stopped
+
+  kafka-producer-2:
+    build:
+      context: ./src/components/kafka
+    container_name: kafka-producer-2
+    environment:
+      PRODUCER_ID: 1
+      TOTAL_PRODUCERS: 5
+      KAFKA_SERVER: "kafka:9092"
+    volumes:
+      - ./src/components/radiation_data:/data
+    depends_on:
+      - kafka
+    networks:
+      - bridge
+    restart: unless-stopped
+
+  kafka-producer-3:
+    build:
+      context: ./src/components/kafka
+    container_name: kafka-producer-3
+    environment:
+      PRODUCER_ID: 2
+      TOTAL_PRODUCERS: 5
+      KAFKA_SERVER: "kafka:9092"
+    volumes:
+      - ./src/components/radiation_data:/data
+    depends_on:
+      - kafka
+    networks:
+      - bridge
+    restart: unless-stopped
+
+  kafka-producer-4:
+    build:
+      context: ./src/components/kafka
+    container_name: kafka-producer-4
+    environment:
+      PRODUCER_ID: 3
+      TOTAL_PRODUCERS: 5
+      KAFKA_SERVER: "kafka:9092"
+    volumes:
+      - ./src/components/radiation_data:/data
+    depends_on:
+      - kafka
+    networks:
+      - bridge
+    restart: unless-stopped
+
+  kafka-producer-5:
+    build:
+      context: ./src/components/kafka
+    container_name: kafka-producer-5
+    environment:
+      PRODUCER_ID: 4
+      TOTAL_PRODUCERS: 5
+      KAFKA_SERVER: "kafka:9092"
+    volumes:
+      - ./src/components/radiation_data:/data
+    depends_on:
+      - kafka
+    networks:
+      - bridge
+    restart: unless-stopped
